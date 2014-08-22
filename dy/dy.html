@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="X-UA-Compatible" content="IE=EmulateIE7; IE=EmulateIE9">
+    <title>Dygraph-demo</title>
+    <script type="text/javascript" src="//code.jquery.com/jquery-latest.min.js"></script>
+    <script type="text/javascript" src="//chromium-skia-gm.commondatastorage.googleapis.com/dash/dygraph-combined.js"></script>
+   <style type="text/css">
+      .line {
+          visibility: hidden;
+          background-color: black;
+          position: absolute;
+          pointer-events: none;  /* let mouse events fall through to the chart */
+       }
+      .tline {
+          width: 100%;
+	  height: 3px;
+          visibility: hidden;
+          background-color: red;
+          position: absolute;
+          pointer-events: none;  /* let mouse events fall through to the chart */
+       }
+       .yline {
+       width: 100%;
+       height: 1px;
+       }
+       .tooltip {       position: absolute;
+                        display: 'none',
+                        border: '1px solid #fdd',
+                        padding: '2px',
+                        'background-color': 'rgba(0, 0, 0, 0.5)',
+                        opacity: 0.80
+        }
+    </style>
+  </head>
+  <body>
+    <p>Data drawn using dygraphs:</p>
+    <p id="label" style="text-align:center">No data selected.</p>
+    <table><tr><td>
+    <div id="skpbench" style="width:1200px; height:600px;"></div>
+    </td><td style="vertical-align:text-top">
+    <select id="filter" style="height:85px;" multiple>
+    <option value="Ubuntu" selected>Ubuntu</option>
+    <option value="Win7" selected>Win7</option>
+    <option value="cpu" selected>cpu</option>
+    <option value="gpu" selected>gpu</option>
+    <option value="desk_amazon" selected>desk_amazon</option>
+    <option value="desk_baidu" selected>desk_baidu</option>
+    </select><hr>
+    TRYBOTS:<br>
+    <select id="try" style="width:400px;">
+    <option value="none" selected>none</option>
+    <option value="Ubuntu:gpu:desk_baidu Build 6">Ubuntu:gpu:desk_baidu Build 6</option>
+    <option value="Win7:cpu:desk_amazon Build 3">Win7:cpu:desk_amazon Build 3</option>
+    </select><hr>
+    <div id="legend" style="width:400px; font-size:0.8em; padding-top:5px;"></div>
+    </td></tr>
+    </table>
+    <p id="blame">No data selected.</p>
+    
+    <script type="text/javascript">
+  $(document).ready(function () {
+  var getData = function(numSeries, numRows) {
+    var data = [];
+
+    for (var j = 0; j < numRows; ++j) {
+        data[j] = [13000 + j];
+    }
+    for (var i = 0; i < numSeries; ++i) {
+      var val = 3;
+      for (var j = 0; j < numRows; ++j) {
+        val += Math.random() - 0.5;
+	if (Math.random() < 0.2) {
+            data[j][i + 1] = [val, val - 0.2, val + 0.4];
+        } else if (Math.random() < 0.4) {
+	  data[j][i + 1] = [null, null, null];
+	} else {
+            data[j][i + 1] = [val - 0.3, val, val + 0.3];
+	}
+      }
+    }
+    return data;
+  };
+  var chartData = getData(8, 20);
+
+      function createLabels() {
+        labels = [
+	  "Revision",
+	  "Ubuntu:cpu:desk_amazon",
+	  "Ubuntu:cpu:desk_baidu",
+	  "Ubuntu:gpu:desk_amazon",
+	  "Ubuntu:gpu:desk_baidu",
+	  "Win7:cpu:desk_amazon",
+	  "Win7:cpu:desk_baidu",
+	  "Win7:gpu:desk_amazon",
+	  "Win7:gpu:desk_baidu"
+	]
+	return labels;
+      }
+  var fillValues = [13004, 13008, 13014, 13017];
+  var chartLabels = createLabels();
+  var tline;
+  var tryresults = {"Ubuntu:gpu:desk_baidu Build 6": 2.75,
+    "Win7:cpu:desk_amazon Build 3": 2.45
+  };
+  var tooltip;
+  var yline;
+  var chart = null;
+        chart = new Dygraph(
+            document.getElementById("skpbench"),
+	    chartData,
+	    {
+	      plotter: Dygraph.Plotters.linePlotter,
+	      labels: chartLabels,
+	      labelsDiv: document.getElementById('legend'),
+	      customBars: true,
+	      connectSeparatedPoints: true,
+	      highlightCircleSize: 2,
+	      axes: {
+	        x : {
+		  axisLabelFormatter: function(x) {
+		    return x == Math.round(x) ? x : null;
+		  }
+		}
+	      },
+	      highlightSeriesOpts: {
+	        highlightCircleSize: 8,
+	        plotter: Dygraph.Plotters.errorPlotter
+	      },
+	      highlightCallback: function(e, x, pts, row, seriesName) {
+	        for (var y = 0; y < pts.length; y++) {
+		  if (pts[y].name == seriesName) {
+	            yline.style.top = pts[y].canvasy + 87 + "px";
+                    tooltip.style.top = pts[y].canvasy + 90 + "px";
+                    tooltip.style.left = chart.toDomXCoord(x) + "px";
+		    $('.tooltip').html('tooltip here for ' + x + ':' + seriesName + '<br><a href="http://skbug.com/2225" target="_blank">skia:2225</a>');
+		    break;
+		  }
+		}
+	            yline.style.visibility = "visible";
+	      },
+	      unhighlightCallback: function(e) {
+	        yline.style.visibility = "hidden";
+	      },
+	      showRangeSelector: true,
+	      underlayCallback: function(canvas, area, g) {
+	        canvas.fillStyle = "rgba(255, 255, 102, 1.0)";
+
+                function highlight_period(x_start, x_end) {
+                    var canvas_left_x = g.toDomXCoord(x_start);
+                    var canvas_right_x = g.toDomXCoord(x_end);
+                    var canvas_width = canvas_right_x - canvas_left_x;
+                    canvas.fillRect(canvas_left_x, area.y, canvas_width, area.h);
+                }
+		var min_data_x = g.getValue(0,0);
+		var max_data_x = g.getValue(g.numRows()-1,0);
+		for (f = 0; f < fillValues.length; f++) {
+		  if (fillValues[f] > min_data_x) {
+		    end = max_data_x;
+		    if (f < fillValues.length - 1) {
+		      end = fillValues[f+1];
+		    }
+		    highlight_period(fillValues[f], end);
+                    f += 2;
+		  }
+		}
+	      }
+            });
+  $("#try").change(function() {
+    chart.clearSelection();
+    selectedtry = $("#try option:selected").text();
+    notry = false;
+    if (selectedtry == "none") {
+      notry = true;
+      tline.style.visibility = "hidden";
+    }
+    for (l = 1; l < chartLabels.length; l++) {
+      var tl = chartLabels[l];
+      trymatch = false;
+      if (notry || selectedtry.search(tl) == 0) {
+	  trymatch = true;
+	}
+      chart.setVisibility(l - 1, trymatch);
+    }
+    if (!notry) {
+      tline.style.top = chart.toDomYCoord(tryresults[selectedtry]) + "px";
+      console.log(chart.toDomYCoord(2.6));
+      tline.style.visibility = "visible";
+    }
+  });
+  // TODO: fix wrong logic for the 3 categories.
+  $("#filter").change(function() {
+    $("#try").val("none");
+    chart.clearSelection();
+    tline.style.visibility = "hidden";
+    selected = [];
+    $("#filter option:selected").each(function() {
+      selected.push($(this).text());
+    });
+    for (l = 1; l < chartLabels.length; l++) {
+      var cl = chartLabels[l];
+      visible = false;
+      for (s = 0; s < selected.length; s++) {
+        if (cl.search(selected[s]) >= 0) {
+	  visible = true;
+	  break;
+	}
+      }
+      chart.setVisibility(l - 1, visible);
+    }
+  });
+  annotations = []
+  for (var l = 1; l < chartLabels.length; l++) {
+    var row = 6;
+    xval = chartData[row][0];
+    if (!chart.visibility(l - 1) || chartData[row][l][1] == null) {
+      continue;
+    }
+    annotations.push( {
+      series: chartLabels[l],
+      x: xval,
+      icon: "//chromium-skia-gm.commondatastorage.googleapis.com/dash/dollar.png",
+      width: 18,
+      height: 23,
+      text: 'Profit',
+      cssClass: 'annotation'
+    });
+  }
+  chart.setAnnotations(annotations);
+  var onclick = function(ev) {
+      if (chart.isSeriesLocked()) {
+            chart.clearSelection();
+	    $("#label").text("No data selected.");
+	    $("#blame").text("No data selected.");
+        } else {
+         chart.setSelection(chart.getSelection(), chart.getHighlightSeries(), true);
+	 $("#label").text(chartData[chart.getSelection()][0] + ":" + chart.getHighlightSeries() + ":[" + chart.getValue(chart.getSelection(), chart.indexFromSetName(chart.getHighlightSeries())) + "]");
+         $("#blame").html("Here we get and show blamelists from revision <b>" + chartData[chart.getSelection()][0] + "</b><br><ul><li>traceback to the previous non-null point. Hash Author Subject</li></ul><br> Then add functionality for adding annotations here too.<br>Annotation: type <select><option>FYI</option><option>ThumbsUp</option><option>Warning</option><option>Alert</option></select><input type='text' name='notes'><input type='submit' value='Add annotations'>");
+	//console.log($("#blame").html());
+	}
+  };
+  chart.updateOptions({clickCallback: onclick,
+    annotationClickHandler: function(ann, point, dg, event) {
+      $("#label").text("Clicked annotation at " + ann.x + ":" + ann.series);
+    }
+  }, true);
+
+  tline = document.createElement("div");
+  tline.className = "tline";
+  document.getElementById("skpbench").appendChild(tline);
+
+  yline = document.createElement("div");
+  yline.className = "line yline";
+  document.getElementById("skpbench").appendChild(yline);
+
+  tooltip = document.createElement("div");
+  tooltip.className = "tooltip";
+  document.getElementById("skpbench").appendChild(tooltip);
+
+  });
+    </script>
+
+  </body>
+</html>
