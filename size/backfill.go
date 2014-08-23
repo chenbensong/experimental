@@ -173,9 +173,10 @@ func main() {
 		}
 		ts, err := strconv.ParseInt(parts[1], 10, 64)
 		if err != nil {
-			log.Printf("Cannot parse ts: %d.", parts[1])
+			log.Printf("Cannot parse ts: %s.", parts[1])
 			continue
 		}
+		log.Printf("Start working on %s - %d:", h, ts)
 		m := getFileSizes(h)
 		for k, v := range m {
 			if _, err := db.Exec(`INSERT IGNORE INTO sizes(ts,file,size)
