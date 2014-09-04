@@ -123,7 +123,7 @@ func main() {
 		return
 	}
 	if len(res) == 0 {
-		fmt.Printf("No new commits.\n")
+		fmt.Printf("No new commits after %d.\n", gitnumber)
 		return
 	}
 	insert := "INSERT INTO githash(gitnumber,ts,githash,author,message) VALUES"
