@@ -70,7 +70,7 @@ class ProcessSize(buildstep.LoggingBuildStep):
 
     file_prefix = os.path.join(
         self.getProperty('builddir'), self.workdir, 'out', 'Release')
-    files = [file_prefix + '/skia.so']
+    files = [file_prefix + '/skia.so', file_prefix + '/lib/libskia.so']
     for f in glob.iglob(os.path.join(file_prefix, 'libskia*.a')):
         files.append(f)
     for f in files:
