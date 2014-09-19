@@ -27,7 +27,7 @@
   }
   
   function onLoad() {
-    $$$('#plot')..innerText = 'Here goes plot.';
+    $$$('#plot').innerText = 'Here goes plot.';
   }
   
   if (document.readyState != 'loading') {
