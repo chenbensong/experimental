@@ -57,7 +57,7 @@
   }
   
   function onLoad() {
-    var j = get('http://skiagit.appspot.com/sizedata');
+    var j = get('https://skiagit.appspot.com/sizedata');
     $$$('#plot').innerText = j;
   }
   
