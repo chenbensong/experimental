@@ -77,7 +77,7 @@ class ELFSymbolizer(object):
 
   def __init__(self, elf_file_path, addr2line_path, callback, inlines=False,
       max_concurrent_jobs=None, addr2line_timeout=30, max_queue_size=50,
-      source_root_path=None, strip_base_path=None):
+      source_root_path=None, strip_base_path=None, prefix_to_remove=None):
     """Args:
       elf_file_path: path of the elf file to be symbolized.
       addr2line_path: path of the toolchain's addr2line binary.
@@ -105,6 +105,7 @@ class ELFSymbolizer(object):
           determine which of the files was the source of the symbol.
       strip_base_path: Rebases the symbols source paths onto |source_root_path|
           (i.e replace |strip_base_path| with |source_root_path).
+      prefix_to_remove: Removes the prefix from ElfSymbolInfo output. Skia added.
     """
     assert(os.path.isfile(addr2line_path)), 'Cannot find ' + addr2line_path
     self.elf_file_path = elf_file_path
@@ -117,6 +118,9 @@ class ELFSymbolizer(object):
     self.addr2line_timeout = addr2line_timeout
     self.requests_counter = 0  # For generating monotonic request IDs.
     self._a2l_instances = []  # Up to |max_concurrent_jobs| _Addr2Line inst.
+
+    # Skia added.
+    self.prefix_to_remove = prefix_to_remove
 
     # If necessary, create disambiguation lookup table
     self.disambiguate = source_root_path is not None
@@ -369,7 +373,7 @@ class ELFSymbolizer(object):
               self._symbolizer.source_root_path or '', source_path)
 
         sym_info = ELFSymbolInfo(name, source_path, source_line, was_ambiguous,
-                                 disambiguated)
+                                 disambiguated, self._symbolizer.prefix_to_remove)
         if prev_sym_info:
           prev_sym_info.inlined_by = sym_info
         if not innermost_sym_info:
@@ -451,9 +455,14 @@ class ELFSymbolInfo(object):
   """The result of the symbolization passed as first arg. of each callback."""
 
   def __init__(self, name, source_path, source_line, was_ambiguous=False,
-               disambiguated=False):
+               disambiguated=False, prefix_to_remove=None):
     """All the fields here can be None (if addr2line replies with '??')."""
     self.name = name
+    if name:
+      print 'NAME ' + self.name
+    if source_path and source_path.startswith(prefix_to_remove):
+      source_path = source_path[len(prefix_to_remove) : ]
+      print source_path
     self.source_path = source_path
     self.source_line = source_line
     # In the case of |inlines|=True, the |inlined_by| points to the outer

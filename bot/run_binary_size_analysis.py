@@ -25,20 +25,7 @@ import tempfile
 import time
 
 import binary_size_utils
-
-# This path changee is not beautiful. Temporary (I hope) measure until
-# the chromium project has figured out a proper way to organize the
-# library of python tools. http://crbug.com/375725
-elf_symbolizer_path = os.path.abspath(os.path.join(
-    os.path.dirname(__file__),
-    '..',
-    '..',
-    'build',
-    'android',
-    'pylib'))
-sys.path.append(elf_symbolizer_path)
-import symbols.elf_symbolizer as elf_symbolizer  # pylint: disable=F0401
-
+import elf_symbolizer
 
 # Node dictionary keys. These are output in json read by the webapp so
 # keep them short to save file size.
@@ -59,29 +46,6 @@ NAME_NO_PATH_BUCKET = '(No Path)'
 BIG_BUCKET_LIMIT = 3000
 
 
-# TODO(andrewhayden): Only used for legacy reports. Delete.
-def FormatBytes(byte_count):
-  """Pretty-print a number of bytes."""
-  if byte_count > 1e6:
-    byte_count = byte_count / 1.0e6
-    return '%.1fm' % byte_count
-  if byte_count > 1e3:
-    byte_count = byte_count / 1.0e3
-    return '%.1fk' % byte_count
-  return str(byte_count)
-
-
-# TODO(andrewhayden): Only used for legacy reports. Delete.
-def SymbolTypeToHuman(symbol_type):
-  """Convert a symbol type as printed by nm into a human-readable name."""
-  return {'b': 'bss',
-          'd': 'data',
-          'r': 'read-only data',
-          't': 'code',
-          'w': 'weak symbol',
-          'v': 'weak symbol'}[symbol_type]
-
-
 def _MkChild(node, name):
   child = node[NODE_CHILDREN_KEY].get(name)
   if child is None:
@@ -89,7 +53,6 @@ def _MkChild(node, name):
              NODE_CHILDREN_KEY: {}}
     node[NODE_CHILDREN_KEY][name] = child
   return child
-
 
 
 def SplitNoPathBucket(node):
@@ -175,15 +138,16 @@ def MakeCompactTree(symbols, symbol_path_origin_dir):
       symbol_type = '@'  # hack to categorize these separately
     # Take path like '/foo/bar/baz', convert to ['foo', 'bar', 'baz']
     if file_path and file_path != "??":
-      file_path = os.path.abspath(os.path.join(symbol_path_origin_dir,
-                                               file_path))
+      pass  # For Skia, always use relative path.
+      #file_path = os.path.abspath(os.path.join(symbol_path_origin_dir,
+      #                                         file_path))
       # Let the output structure be relative to $CWD if inside $CWD,
       # otherwise relative to the disk root. This is to avoid
       # unnecessary click-through levels in the output.
-      if file_path.startswith(cwd + os.sep):
-        file_path = file_path[len(cwd):]
-      if file_path.startswith('/'):
-        file_path = file_path[1:]
+      #if file_path.startswith(cwd + os.sep):
+      #  file_path = file_path[len(cwd):]
+      #if file_path.startswith('/'):
+      #  file_path = file_path[1:]
       seen_symbol_with_path = True
     else:
       file_path = NAME_NO_PATH_BUCKET
@@ -220,140 +184,6 @@ def MakeCompactTree(symbols, symbol_path_origin_dir):
   return result
 
 
-# TODO(andrewhayden): Only used for legacy reports. Delete.
-def TreeifySymbols(symbols):
-  """Convert symbols into a path-based tree, calculating size information
-  along the way.
-
-  The result is a dictionary that contains two kinds of nodes:
-  1. Leaf nodes, representing source code locations (e.g., c++ files)
-     These nodes have the following dictionary entries:
-       sizes: a dictionary whose keys are categories (such as code, data,
-              vtable, etceteras) and whose values are the size, in bytes, of
-              those categories;
-       size:  the total size, in bytes, of all the entries in the sizes dict
-  2. Non-leaf nodes, representing directories
-     These nodes have the following dictionary entries:
-       children: a dictionary whose keys are names (path entries; either
-                 directory or file names) and whose values are other nodes;
-       size:     the total size, in bytes, of all the leaf nodes that are
-                 contained within the children dict (recursively expanded)
-
-  The result object is itself a dictionary that represents the common ancestor
-  of all child nodes, e.g. a path to which all other nodes beneath it are
-  relative. The 'size' attribute of this dict yields the sum of the size of all
-  leaf nodes within the data structure.
-  """
-  dirs = {'children': {}, 'size': 0}
-  for sym, symbol_type, size, path in symbols:
-    dirs['size'] += size
-    if path:
-      path = os.path.normpath(path)
-      if path.startswith('/'):
-        path = path[1:]
-
-    parts = None
-    if path:
-      parts = path.split('/')
-
-    if parts:
-      assert path
-      file_key = parts.pop()
-      tree = dirs
-      try:
-        # Traverse the tree to the parent of the file node, creating as needed
-        for part in parts:
-          assert part != ''
-          if part not in tree['children']:
-            tree['children'][part] = {'children': {}, 'size': 0}
-          tree = tree['children'][part]
-          tree['size'] += size
-
-        # Get (creating if necessary) the node for the file
-        # This node doesn't have a 'children' attribute
-        if file_key not in tree['children']:
-          tree['children'][file_key] = {'sizes': collections.defaultdict(int),
-                                        'size': 0}
-        tree = tree['children'][file_key]
-        tree['size'] += size
-
-        # Accumulate size into a bucket within the file
-        symbol_type = symbol_type.lower()
-        if 'vtable for ' in sym:
-          tree['sizes']['[vtable]'] += size
-        elif 'r' == symbol_type:
-          tree['sizes']['[rodata]'] += size
-        elif 'd' == symbol_type:
-          tree['sizes']['[data]'] += size
-        elif 'b' == symbol_type:
-          tree['sizes']['[bss]'] += size
-        elif 't' == symbol_type:
-          # 'text' in binary parlance means 'code'.
-          tree['sizes']['[code]'] += size
-        elif 'w' == symbol_type:
-          tree['sizes']['[weak]'] += size
-        else:
-          tree['sizes']['[other]'] += size
-      except:
-        print >> sys.stderr, sym, parts, file_key
-        raise
-    else:
-      key = 'symbols without paths'
-      if key not in dirs['children']:
-        dirs['children'][key] = {'sizes': collections.defaultdict(int),
-                                 'size': 0}
-      tree = dirs['children'][key]
-      subkey = 'misc'
-      if (sym.endswith('::__FUNCTION__') or
-        sym.endswith('::__PRETTY_FUNCTION__')):
-        subkey = '__FUNCTION__'
-      elif sym.startswith('CSWTCH.'):
-        subkey = 'CSWTCH'
-      elif '::' in sym:
-        subkey = sym[0:sym.find('::') + 2]
-      tree['sizes'][subkey] = tree['sizes'].get(subkey, 0) + size
-      tree['size'] += size
-  return dirs
-
-
-# TODO(andrewhayden): Only used for legacy reports. Delete.
-def JsonifyTree(tree, name):
-  """Convert TreeifySymbols output to a JSON treemap.
-
-  The format is very similar, with the notable exceptions being
-  lists of children instead of maps and some different attribute names."""
-  children = []
-  css_class_map = {
-                  '[vtable]': 'vtable',
-                  '[rodata]': 'read-only_data',
-                  '[data]': 'data',
-                  '[bss]': 'bss',
-                  '[code]': 'code',
-                  '[weak]': 'weak_symbol'
-  }
-  if 'children' in tree:
-    # Non-leaf node. Recurse.
-    for child_name, child in tree['children'].iteritems():
-      children.append(JsonifyTree(child, child_name))
-  else:
-    # Leaf node; dump per-file stats as entries in the treemap
-    for kind, size in tree['sizes'].iteritems():
-      child_json = {'name': kind + ' (' + FormatBytes(size) + ')',
-                   'data': { '$area': size }}
-      css_class = css_class_map.get(kind)
-      if css_class is not None:
-        child_json['data']['$symbol'] = css_class
-      children.append(child_json)
-  # Sort children by size, largest to smallest.
-  children.sort(key=lambda child: -child['data']['$area'])
-
-  # For leaf nodes, the 'size' attribute is the size of the leaf;
-  # Non-leaf nodes don't really have a size, but their 'size' attribute is
-  # the sum of the sizes of all their children.
-  return {'name': name + ' (' + FormatBytes(tree['size']) + ')',
-          'data': { '$area': tree['size'] },
-          'children': children }
-
 def DumpCompactTree(symbols, symbol_path_origin_dir, outfile):
   tree_root = MakeCompactTree(symbols, symbol_path_origin_dir)
   with open(outfile, 'w') as out:
@@ -361,45 +191,6 @@ def DumpCompactTree(symbols, symbol_path_origin_dir, outfile):
     # Use separators without whitespace to get a smaller file.
     json.dump(tree_root, out, separators=(',', ':'))
   print('Writing %d bytes json' % os.path.getsize(outfile))
-
-
-# TODO(andrewhayden): Only used for legacy reports. Delete.
-def DumpTreemap(symbols, outfile):
-  dirs = TreeifySymbols(symbols)
-  out = open(outfile, 'w')
-  try:
-    out.write('var kTree = ' + json.dumps(JsonifyTree(dirs, '/')))
-  finally:
-    out.flush()
-    out.close()
-
-
-# TODO(andrewhayden): Only used for legacy reports. Delete.
-def DumpLargestSymbols(symbols, outfile, n):
-  # a list of (sym, symbol_type, size, path); sort by size.
-  symbols = sorted(symbols, key=lambda x: -x[2])
-  dumped = 0
-  out = open(outfile, 'w')
-  try:
-    out.write('var largestSymbols = [\n')
-    for sym, symbol_type, size, path in symbols:
-      if symbol_type in ('b', 'w'):
-        continue  # skip bss and weak symbols
-      if path is None:
-        path = ''
-      entry = {'size': FormatBytes(size),
-               'symbol': sym,
-               'type': SymbolTypeToHuman(symbol_type),
-               'location': path }
-      out.write(json.dumps(entry))
-      out.write(',\n')
-      dumped += 1
-      if dumped >= n:
-        return
-  finally:
-    out.write('];\n')
-    out.flush()
-    out.close()
 
 
 def MakeSourceMap(symbols):
@@ -416,55 +207,6 @@ def MakeSourceMap(symbols):
     record['size'] += size
     record['symbol_count'] += 1
   return sources
-
-
-# TODO(andrewhayden): Only used for legacy reports. Delete.
-def DumpLargestSources(symbols, outfile, n):
-  source_map = MakeSourceMap(symbols)
-  sources = sorted(source_map.values(), key=lambda x: -x['size'])
-  dumped = 0
-  out = open(outfile, 'w')
-  try:
-    out.write('var largestSources = [\n')
-    for record in sources:
-      entry = {'size': FormatBytes(record['size']),
-               'symbol_count': str(record['symbol_count']),
-               'location': record['path']}
-      out.write(json.dumps(entry))
-      out.write(',\n')
-      dumped += 1
-      if dumped >= n:
-        return
-  finally:
-    out.write('];\n')
-    out.flush()
-    out.close()
-
-
-# TODO(andrewhayden): Only used for legacy reports. Delete.
-def DumpLargestVTables(symbols, outfile, n):
-  vtables = []
-  for symbol, _type, size, path in symbols:
-    if 'vtable for ' in symbol:
-      vtables.append({'symbol': symbol, 'path': path, 'size': size})
-  vtables = sorted(vtables, key=lambda x: -x['size'])
-  dumped = 0
-  out = open(outfile, 'w')
-  try:
-    out.write('var largestVTables = [\n')
-    for record in vtables:
-      entry = {'size': FormatBytes(record['size']),
-               'symbol': record['symbol'],
-               'location': record['path']}
-      out.write(json.dumps(entry))
-      out.write(',\n')
-      dumped += 1
-      if dumped >= n:
-        return
-  finally:
-    out.write('];\n')
-    out.flush()
-    out.close()
 
 
 # Regex for parsing "nm" output. A sample line looks like this:
@@ -515,6 +257,7 @@ def RunElfSymbolizer(outfile, library, addr2line_binary, nm_binary, jobs,
         progress.was_ambiguous += 1
 
       address_symbol[addr] = symbol
+      print 'SYMBOL ' + str(symbol)
 
     progress_output()
 
@@ -549,10 +292,14 @@ def RunElfSymbolizer(outfile, library, addr2line_binary, nm_binary, jobs,
   # being set signals the symbolizer to enable disambiguation)
   if not disambiguate:
     src_path = None
+  symbol_path_origin_dir = os.path.dirname(os.path.abspath(library))
+  # Skia specific.
+  symbol_path_prefix = symbol_path_origin_dir.replace('out/Release/lib', '')
   symbolizer = elf_symbolizer.ELFSymbolizer(library, addr2line_binary,
                                             map_address_symbol,
                                             max_concurrent_jobs=jobs,
-                                            source_root_path=src_path)
+                                            source_root_path=src_path,
+                                            prefix_to_remove=symbol_path_prefix)
   user_interrupted = False
   try:
     for line in nm_output_lines:
@@ -592,6 +339,8 @@ def RunElfSymbolizer(outfile, library, addr2line_binary, nm_binary, jobs,
           'Output will not be fully classified.')
 
   symbol_path_origin_dir = os.path.dirname(os.path.abspath(library))
+  # Skia specific.
+  symbol_path_prefix = symbol_path_origin_dir.replace('out/Release/lib', '')
 
   with open(outfile, 'w') as out:
     for line in nm_output_lines:
@@ -604,8 +353,9 @@ def RunElfSymbolizer(outfile, library, addr2line_binary, nm_binary, jobs,
           if symbol is not None:
             path = '??'
             if symbol.source_path is not None:
-              path = os.path.abspath(os.path.join(symbol_path_origin_dir,
-                                                  symbol.source_path))
+              path = symbol.source_path.replace(symbol_path_prefix, '')
+              #path = os.path.abspath(os.path.join(symbol_path_origin_dir,
+              #                                    symbol.source_path))
             line_number = 0
             if symbol.source_line is not None:
               line_number = symbol.source_line
@@ -887,45 +637,17 @@ def main():
 
 
   if opts.legacy: # legacy report
-    DumpTreemap(symbols, os.path.join(opts.destdir, 'treemap-dump.js'))
-    DumpLargestSymbols(symbols,
-                         os.path.join(opts.destdir, 'largest-symbols.js'), 100)
-    DumpLargestSources(symbols,
-                         os.path.join(opts.destdir, 'largest-sources.js'), 100)
-    DumpLargestVTables(symbols,
-                         os.path.join(opts.destdir, 'largest-vtables.js'), 100)
-    treemap_out = os.path.join(opts.destdir, 'webtreemap')
-    if not os.path.exists(treemap_out):
-      os.makedirs(treemap_out, 0755)
-    treemap_src = os.path.join('third_party', 'webtreemap', 'src')
-    shutil.copy(os.path.join(treemap_src, 'COPYING'), treemap_out)
-    shutil.copy(os.path.join(treemap_src, 'webtreemap.js'), treemap_out)
-    shutil.copy(os.path.join(treemap_src, 'webtreemap.css'), treemap_out)
-    shutil.copy(os.path.join('tools', 'binary_size', 'legacy_template',
-                             'index.html'), opts.destdir)
+    print 'Do Not set legacy flag.'
+
   else: # modern report
     if opts.library:
       symbol_path_origin_dir = os.path.dirname(os.path.abspath(opts.library))
     else:
       # Just a guess. Hopefully all paths in the input file are absolute.
       symbol_path_origin_dir = os.path.abspath(os.getcwd())
-    data_js_file_name = os.path.join(opts.destdir, 'data.js')
+    data_js_file_name = os.path.join(opts.destdir, 'skdata.js')
     DumpCompactTree(symbols, symbol_path_origin_dir, data_js_file_name)
-    d3_out = os.path.join(opts.destdir, 'd3')
-    if not os.path.exists(d3_out):
-      os.makedirs(d3_out, 0755)
-    d3_src = os.path.join(os.path.dirname(__file__),
-                          '..',
-                          '..',
-                          'third_party', 'd3', 'src')
-    template_src = os.path.join(os.path.dirname(__file__),
-                                'template')
-    shutil.copy(os.path.join(d3_src, 'LICENSE'), d3_out)
-    shutil.copy(os.path.join(d3_src, 'd3.js'), d3_out)
-    shutil.copy(os.path.join(template_src, 'index.html'), opts.destdir)
-    shutil.copy(os.path.join(template_src, 'D3SymbolTreeMap.js'), opts.destdir)
-
-  print 'Report saved to ' + opts.destdir + '/index.html'
+    print 'Report data saved to ' + opts.destdir + '/skdata.js'
 
 
 if __name__ == '__main__':
