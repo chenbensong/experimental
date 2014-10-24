@@ -458,11 +458,8 @@ class ELFSymbolInfo(object):
                disambiguated=False, prefix_to_remove=None):
     """All the fields here can be None (if addr2line replies with '??')."""
     self.name = name
-    if name:
-      print 'NAME ' + self.name
     if source_path and source_path.startswith(prefix_to_remove):
       source_path = source_path[len(prefix_to_remove) : ]
-      print source_path
     self.source_path = source_path
     self.source_line = source_line
     # In the case of |inlines|=True, the |inlined_by| points to the outer

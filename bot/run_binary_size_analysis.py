@@ -184,12 +184,15 @@ def MakeCompactTree(symbols, symbol_path_origin_dir):
   return result
 
 
-def DumpCompactTree(symbols, symbol_path_origin_dir, outfile):
+def DumpCompactTree(symbols, symbol_path_origin_dir, outfile, ha):
   tree_root = MakeCompactTree(symbols, symbol_path_origin_dir)
+  json_data = {'tree_data': tree_root,
+               'githash': ha}
   with open(outfile, 'w') as out:
-    out.write('var tree_data=')
+    # out.write('var tree_data=')
     # Use separators without whitespace to get a smaller file.
-    json.dump(tree_root, out, separators=(',', ':'))
+    #json.dump(tree_root, out, separators=(',', ':'))
+    json.dump(json_data, out, separators=(',', ':'))
   print('Writing %d bytes json' % os.path.getsize(outfile))
 
 
@@ -257,7 +260,6 @@ def RunElfSymbolizer(outfile, library, addr2line_binary, nm_binary, jobs,
         progress.was_ambiguous += 1
 
       address_symbol[addr] = symbol
-      print 'SYMBOL ' + str(symbol)
 
     progress_output()
 
@@ -581,6 +583,8 @@ def main():
                     help='the path to the source code of the output binary, '
                     'default set to current directory. Used in the'
                     ' disambiguation process.')
+  parser.add_option('--githash', default='latest',
+                    help='The git hash from which the data are generated.')
   opts, _args = parser.parse_args()
 
   if ((not opts.library) and (not opts.nm_in)) or (opts.library and opts.nm_in):
@@ -645,9 +649,9 @@ def main():
     else:
       # Just a guess. Hopefully all paths in the input file are absolute.
       symbol_path_origin_dir = os.path.abspath(os.getcwd())
-    data_js_file_name = os.path.join(opts.destdir, 'skdata.js')
-    DumpCompactTree(symbols, symbol_path_origin_dir, data_js_file_name)
-    print 'Report data saved to ' + opts.destdir + '/skdata.js'
+    data_js_file_name = os.path.join(opts.destdir, 'skdata.json')
+    DumpCompactTree(symbols, symbol_path_origin_dir, data_js_file_name, opts.githash)
+    print 'Report data saved to ' + opts.destdir + '/skdata.json'
 
 
 if __name__ == '__main__':
