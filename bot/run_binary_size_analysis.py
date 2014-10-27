@@ -23,6 +23,9 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib2
+
+from email.utils import parsedate
 
 import binary_size_utils
 import elf_symbolizer
@@ -45,6 +48,11 @@ NAME_NO_PATH_BUCKET = '(No Path)'
 # graphing lib.
 BIG_BUCKET_LIMIT = 3000
 
+# URL for Skia googlesource commit JSON.
+GOOGLESOURCE_URL = 'https://skia.googlesource.com/skia/+log/HEAD?format=JSON'
+
+# Google Storage object prefix.
+GS_PREFIX = 'gs://skiasize/'
 
 def _MkChild(node, name):
   child = node[NODE_CHILDREN_KEY].get(name)
@@ -183,17 +191,47 @@ def MakeCompactTree(symbols, symbol_path_origin_dir):
                     'Results might be unusable.' % largest_list_len)
   return result
 
+def GetRecentCommits(start_githash):
+  res = []
+  url = GOOGLESOURCE_URL
+  if start_githash:
+    url += '&s=' + start_githash
+  content = urllib2.urlopen(url).read()
+  data = json.loads(content[content.find('{') : ])
+  if data['log']:
+    for commit in data['log']:
+      msg = commit['message']
+      if msg.find('\n') > 0:
+        msg = msg[ : msg.find('\n')]
+      date = parsedate(commit['author']['time'])
+      res.append(':'.join([commit['commit'], commit['author']['name'],
+                           time.strftime('%Y-%m-%d_%X', date), msg[:100]]))
+  return res
 
 def DumpCompactTree(symbols, symbol_path_origin_dir, outfile, ha):
   tree_root = MakeCompactTree(symbols, symbol_path_origin_dir)
+  githash = ha.split(':')[0]
+  start_githash = ''
+  if len(githash) == 40:
+    start_githash = githash
   json_data = {'tree_data': tree_root,
-               'githash': ha}
-  with open(outfile, 'w') as out:
+               'githash': ha,
+               'commits': GetRecentCommits(start_githash),}
+  tmpfile = tempfile.NamedTemporaryFile(delete=False).name
+  with open(tmpfile, 'w') as out:
     # out.write('var tree_data=')
     # Use separators without whitespace to get a smaller file.
     #json.dump(tree_root, out, separators=(',', ':'))
     json.dump(json_data, out, separators=(',', ':'))
   print('Writing %d bytes json' % os.path.getsize(outfile))
+  if not githash:
+    githash = 'unknown'
+  subprocess.check_output(['gsutil', '-h', 'Content-Type:application/json',
+                           'cp', '-a', 'public-read', tmpfile,
+                           GS_PREFIX + githash + '.json'])
+  subprocess.check_output(['gsutil', '-h', 'Content-Type:application/json',
+                           'cp', '-a', 'public-read', tmpfile,
+                           GS_PREFIX + 'latest.json'])
 
 
 def MakeSourceMap(symbols):
