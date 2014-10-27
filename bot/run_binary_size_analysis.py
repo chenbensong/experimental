@@ -223,7 +223,8 @@ def DumpCompactTree(symbols, symbol_path_origin_dir, outfile, ha):
     # Use separators without whitespace to get a smaller file.
     #json.dump(tree_root, out, separators=(',', ':'))
     json.dump(json_data, out, separators=(',', ':'))
-  print('Writing %d bytes json' % os.path.getsize(outfile))
+  #print('Writing %d bytes json' % os.path.getsize(outfile))
+  print('Dumping JSON to %s.json.' % githash)
   if not githash:
     githash = 'unknown'
   subprocess.check_output(['gsutil', '-h', 'Content-Type:application/json',
@@ -689,7 +690,7 @@ def main():
       symbol_path_origin_dir = os.path.abspath(os.getcwd())
     data_js_file_name = os.path.join(opts.destdir, 'skdata.json')
     DumpCompactTree(symbols, symbol_path_origin_dir, data_js_file_name, opts.githash)
-    print 'Report data saved to ' + opts.destdir + '/skdata.json'
+    print 'Report data uploaded to GS.'
 
 
 if __name__ == '__main__':
