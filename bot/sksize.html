@@ -43,6 +43,7 @@ function populate() {
         url = window.location.hash.substring(1) + '.json';
       }
     }
+    url = 'data/' + url;
     xhr.open('GET', url, false);
     xhr.send(null);
     if (xhr.status == 200) {

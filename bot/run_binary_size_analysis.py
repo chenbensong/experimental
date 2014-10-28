@@ -52,7 +52,7 @@ BIG_BUCKET_LIMIT = 3000
 GOOGLESOURCE_URL = 'https://skia.googlesource.com/skia/+log/HEAD?format=JSON'
 
 # Google Storage object prefix.
-GS_PREFIX = 'gs://skiasize/'
+GS_PREFIX = 'gs://skiasize/data/'
 
 def _MkChild(node, name):
   child = node[NODE_CHILDREN_KEY].get(name)
