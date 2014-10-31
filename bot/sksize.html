@@ -39,7 +39,7 @@ function populate() {
     var url = 'latest.json';
     if (window.location.hash) {
       var s = window.location.hash.substring(1);
-      if (s.length > 0) {
+      if (s.length == 40 || s == 'latest') {
         url = window.location.hash.substring(1) + '.json';
       }
     }
@@ -48,9 +48,32 @@ function populate() {
     xhr.send(null);
     if (xhr.status == 200) {
       var data = JSON.parse(xhr.responseText);
-      githash = data.githash;
+      gitinfo = data.githash.split(":");
       tree_data = data.tree_data;
-      $$$('#githash').innerText = 'Githash: ' + githash;
+      if (gitinfo.length == 4) {
+        var newDate = new Date(gitinfo[2] * 1000);
+	$$$('#githash').innerHTML = 'CL: ' + '<a href="https://skia.googlesource.com/skia/+/' + gitinfo[0] + '" target="_blank">' + gitinfo[0].substring(0, 7) + '</a> ' + gitinfo[1] + " - " + newDate.toUTCString() + '<br>Commit Subject: ' + gitinfo[3];
+      } else {
+        $$$('#githash').innerHTML = 'Commit Info: ' + data.githash;
+      }
+      var selectDom = $$$('#commitSel');
+      while (selectDom.firstChild) {
+        selectDom.removeChild(selectDom.firstChild);
+      }
+      for (var i = data.commits.length - 1; i >= 0; i--) {
+        var c = data.commits[i];
+        var opt = document.createElement('OPTION');
+        opt.value = c.substring(0, c.indexOf(':'));
+        if (opt.value == gitinfo[0]) {
+          opt.selected = true;
+        }
+        opt.innerText = c.substring(0, 7) + c.substring(40);
+        selectDom.insertBefore(opt, selectDom.firstChild);
+      }
+      var o = document.createElement('OPTION');
+      o.value = 'latest';
+      o.innerText = 'latest';
+      selectDom.insertBefore(o, selectDom.firstChild);
     } else {
       alert('Error loading JSON data ' + url);
     }
@@ -68,6 +91,11 @@ function init() {
     }
     initFilterOptions();
     populate();
+    $$$('#commitSel').addEventListener('change', function() {
+      window.location.hash = $$$('#commitSel').value;
+      populate();
+      location.reload();
+    });
 }
 
 function getIdealSizes() {
@@ -168,10 +196,10 @@ function bigSymbolsReport() {
                 cell.append('span').text('Symbol: ');
                 cell.append('span').text(escape(record.n));
             } else {
-                var href = 'https://code.google.com/p/chromium/codesearch#chromium/src'
-                    + treemap.pathFor(record)
-                    + '&q='
-                    + escape(record.n);
+                var href = 'https://skia.googlesource.com/skia/+/master'
+                    + treemap.pathFor(record);
+                    // + '&q='
+                    // + escape(record.n);
                 cell.append('a')
                     .attr('href', href)
                     .attr('target', '_blank')
@@ -203,7 +231,7 @@ function bigPathsReport() {
             if (treemap.pathFor(record).indexOf('/out') == 0) {
                 cell.text(treemap.pathFor(record));
             } else {
-                var href = 'https://code.google.com/p/chromium/codesearch#chromium/src' + treemap.pathFor(record);
+                var href = 'https://skia.googlesource.com/skia/+/master' + treemap.pathFor(record);
                 cell.append('a')
                     .attr('href', href)
                     .attr('target', '_blank')
@@ -443,7 +471,7 @@ function escape(str) {
 <body onload='init()'>
 <div style='position: absolute; top: 5px; left: 5px;'>
   <input type='button' onclick='showOptions()' value='Options &amp; Legend...'>
-  <span style='-webkit-user-select: none; cursor: help;' title='Click to view the symbol legend or to configure filters and options for the treemap'>[?]</span>
+  <!-- span style='-webkit-user-select: none; cursor: help;' title='Click to view the symbol legend or to configure filters and options for the treemap'>[?]</span -->
 </div>
 <div style='position: absolute; right: 5px; top: 5px; white-space: nowrap;'>
     Reports:
@@ -453,6 +481,7 @@ function escape(str) {
 <div style='text-align: center; margin-bottom: 5px;'>
     <span style='font-size: x-large; font-weight: bold; font-variant: small-caps'>Skia Binary Size Analysis<span id='subtitle'></span></span>
     <br><span id='githash' style='font-size: medium;'></span>
+    <br><select id="commitSel"></select>
     <br><span style='font-size: small; font-style: italic;'>Double-click a box to zoom in, double-click outermost title to zoom out.</span>
 </div>
 <table id='options_container' style='visibility: hidden; border: 3px ridge grey; padding: 0px; top: 50%; left: 50%; position: fixed; z-index: 2147483646; overflow: auto; background-color: rgba(255,255,255,0.9); border-radius: 10px; box-shadow: 10px 10px 5px rgba(80,80,80,0.7);'><tr><td style='vertical-align: top'>
