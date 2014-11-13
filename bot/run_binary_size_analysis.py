@@ -140,6 +140,7 @@ def MakeCompactTree(symbols, symbol_path_origin_dir):
             NODE_MAX_DEPTH_KEY: 0}
   seen_symbol_with_path = False
   cwd = os.path.abspath(os.getcwd())
+  total_size = 0
   for symbol_name, symbol_type, symbol_size, file_path in symbols:
 
     if 'vtable for ' in symbol_name:
@@ -176,6 +177,7 @@ def MakeCompactTree(symbols, symbol_path_origin_dir):
 
     depth += AddSymbolIntoFileNode(node, symbol_type, symbol_name, symbol_size)
     result[NODE_MAX_DEPTH_KEY] = max(result[NODE_MAX_DEPTH_KEY], depth)
+    total_size += symbol_size
 
   if not seen_symbol_with_path:
     logging.warning('Symbols lack paths. Data will not be structured.')
@@ -189,7 +191,8 @@ def MakeCompactTree(symbols, symbol_path_origin_dir):
   if largest_list_len > BIG_BUCKET_LIMIT:
     logging.warning('There are sections with %d nodes. '
                     'Results might be unusable.' % largest_list_len)
-  return result
+  return result, total_size
+
 
 def GetRecentCommits(start_githash):
   res = []
@@ -203,33 +206,31 @@ def GetRecentCommits(start_githash):
       msg = commit['message']
       if msg.find('\n') > 0:
         msg = msg[ : msg.find('\n')]
-      date = parsedate(commit['author']['time'])
-      res.append(':'.join([commit['commit'], commit['author']['name'],
-                           time.strftime('%Y-%m-%d_%X', date), msg[:100]]))
+      date = parsedate(commit['committer']['time'])
+      res.append({'commit_time': date,
+                  'hash': commit['commit'],
+                  'author': commit['author']['name'],
+                  'subject': msg[:100],})
+
   return res
 
-def DumpCompactTree(symbols, symbol_path_origin_dir, outfile, ha):
-  tree_root = MakeCompactTree(symbols, symbol_path_origin_dir)
-  githash = ha.split(':')[0]
-  start_githash = ''
-  if len(githash) == 40:
-    start_githash = githash
+
+def DumpCompactTree(symbols, symbol_path_origin_dir, ha):
+  tree_root, total_size = MakeCompactTree(symbols, symbol_path_origin_dir)
   json_data = {'tree_data': tree_root,
                'githash': ha,
-               'commits': GetRecentCommits(start_githash),}
+               'total_size': total_size,
+               'commits': GetRecentCommits(ha),}
   tmpfile = tempfile.NamedTemporaryFile(delete=False).name
   with open(tmpfile, 'w') as out:
     # out.write('var tree_data=')
     # Use separators without whitespace to get a smaller file.
     #json.dump(tree_root, out, separators=(',', ':'))
     json.dump(json_data, out, separators=(',', ':'))
-  #print('Writing %d bytes json' % os.path.getsize(outfile))
-  print('Dumping JSON to %s.json.' % githash)
-  if not githash:
-    githash = 'unknown'
+  print('Dumping JSON to %s.json.' % ha)
   subprocess.check_output(['gsutil', '-h', 'Content-Type:application/json',
                            'cp', '-a', 'public-read', tmpfile,
-                           GS_PREFIX + githash + '.json'])
+                           GS_PREFIX + ha + '.json'])
   subprocess.check_output(['gsutil', '-h', 'Content-Type:application/json',
                            'cp', '-a', 'public-read', tmpfile,
                            GS_PREFIX + 'latest.json'])
@@ -632,8 +633,8 @@ def main():
     if opts.jobs:
       print >> sys.stderr, ('WARNING: --jobs has no effect '
                             'when used with --nm-in')
-  if not opts.destdir:
-    parser.error('--destdir is required argument')
+  #if not opts.destdir:
+  #  parser.error('--destdir is required argument')
   if not opts.jobs:
     # Use the number of processors but cap between 2 and 4 since raw
     # CPU power isn't the limiting factor. It's I/O limited, memory
@@ -675,8 +676,8 @@ def main():
   if opts.pak:
     AddPakData(symbols, opts.pak)
 
-  if not os.path.exists(opts.destdir):
-    os.makedirs(opts.destdir, 0755)
+  #if not os.path.exists(opts.destdir):
+  #  os.makedirs(opts.destdir, 0755)
 
 
   if opts.legacy: # legacy report
@@ -688,8 +689,9 @@ def main():
     else:
       # Just a guess. Hopefully all paths in the input file are absolute.
       symbol_path_origin_dir = os.path.abspath(os.getcwd())
-    data_js_file_name = os.path.join(opts.destdir, 'skdata.json')
-    DumpCompactTree(symbols, symbol_path_origin_dir, data_js_file_name, opts.githash)
+    #data_js_file_name = os.path.join(opts.destdir, 'skdata.json')
+    #DumpCompactTree(symbols, symbol_path_origin_dir, data_js_file_name, opts.githash)
+    DumpCompactTree(symbols, symbol_path_origin_dir, opts.githash)
     print 'Report data uploaded to GS.'
 
 
