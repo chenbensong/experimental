@@ -48,11 +48,10 @@ function populate() {
     xhr.send(null);
     if (xhr.status == 200) {
       var data = JSON.parse(xhr.responseText);
-      gitinfo = data.githash.split(":");
+      gitinfo = data.githash;
       tree_data = data.tree_data;
-      if (gitinfo.length == 4) {
-        var newDate = new Date(gitinfo[2] * 1000);
-	$$$('#githash').innerHTML = 'CL: ' + '<a href="https://skia.googlesource.com/skia/+/' + gitinfo[0] + '" target="_blank">' + gitinfo[0].substring(0, 7) + '</a> ' + gitinfo[1] + " - " + newDate.toUTCString() + '<br>Commit Subject: ' + gitinfo[3];
+      if (gitinfo.length == 40) {
+	$$$('#githash').innerHTML = 'CL: ' + '<a href="https://skia.googlesource.com/skia/+/' + gitinfo + '" target="_blank">' + gitinfo.substring(0, 7) + '</a> TotalSize: ' + data.total_size;
       } else {
         $$$('#githash').innerHTML = 'Commit Info: ' + data.githash;
       }
@@ -63,11 +62,13 @@ function populate() {
       for (var i = data.commits.length - 1; i >= 0; i--) {
         var c = data.commits[i];
         var opt = document.createElement('OPTION');
-        opt.value = c.substring(0, c.indexOf(':'));
-        if (opt.value == gitinfo[0]) {
+        opt.value = c.hash;
+        if (opt.value == gitinfo) {
           opt.selected = true;
         }
-        opt.innerText = c.substring(0, 7) + c.substring(40);
+	var t = new Date(c.commit_time * 1000);
+	var timeString = t.getFullYear() + '-' + t.getMonth() + '-' + t.getDay() + '_' + t.getHours() + 'H' + t.getMinutes() + 'M' + t.getSeconds();
+        opt.innerText = c.hash.substring(0, 7) + ':' + timeString + ':' + c.author + ':' + c.subject;
         selectDom.insertBefore(opt, selectDom.firstChild);
       }
       var o = document.createElement('OPTION');
