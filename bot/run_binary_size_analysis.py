@@ -140,7 +140,6 @@ def MakeCompactTree(symbols, symbol_path_origin_dir):
             NODE_MAX_DEPTH_KEY: 0}
   seen_symbol_with_path = False
   cwd = os.path.abspath(os.getcwd())
-  total_size = 0
   for symbol_name, symbol_type, symbol_size, file_path in symbols:
 
     if 'vtable for ' in symbol_name:
@@ -177,7 +176,6 @@ def MakeCompactTree(symbols, symbol_path_origin_dir):
 
     depth += AddSymbolIntoFileNode(node, symbol_type, symbol_name, symbol_size)
     result[NODE_MAX_DEPTH_KEY] = max(result[NODE_MAX_DEPTH_KEY], depth)
-    total_size += symbol_size
 
   if not seen_symbol_with_path:
     logging.warning('Symbols lack paths. Data will not be structured.')
@@ -191,7 +189,7 @@ def MakeCompactTree(symbols, symbol_path_origin_dir):
   if largest_list_len > BIG_BUCKET_LIMIT:
     logging.warning('There are sections with %d nodes. '
                     'Results might be unusable.' % largest_list_len)
-  return result, total_size
+  return result
 
 
 def GetRecentCommits(start_githash):
@@ -206,7 +204,7 @@ def GetRecentCommits(start_githash):
       msg = commit['message']
       if msg.find('\n') > 0:
         msg = msg[ : msg.find('\n')]
-      date = parsedate(commit['committer']['time'])
+      date = int(time.mktime(parsedate(commit['committer']['time'])))
       res.append({'commit_time': date,
                   'hash': commit['commit'],
                   'author': commit['author']['name'],
@@ -215,11 +213,17 @@ def GetRecentCommits(start_githash):
   return res
 
 
+def GetTreeSize(node):
+  if 'children' not in node:
+    return node['value']
+  return sum([GetTreeSize(i) for i in node['children']])
+
+
 def DumpCompactTree(symbols, symbol_path_origin_dir, ha):
-  tree_root, total_size = MakeCompactTree(symbols, symbol_path_origin_dir)
+  tree_root = MakeCompactTree(symbols, symbol_path_origin_dir)
   json_data = {'tree_data': tree_root,
                'githash': ha,
-               'total_size': total_size,
+               'total_size': GetTreeSize(tree_root),
                'commits': GetRecentCommits(ha),}
   tmpfile = tempfile.NamedTemporaryFile(delete=False).name
   with open(tmpfile, 'w') as out:
